@@ -1,2 +1,2 @@
-# AZRDAV-PR
-private repro for PG and CSS ARA support scripts
+# AZRDAV
+public repro for PG and CSS ARA / RDS support scripts
