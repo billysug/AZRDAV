@@ -10,7 +10,7 @@ param
 # ----------------------------------------------------------------------------------------------------------------
 function main()
 {
-    $logFile = "$(get-variable myinvocation -scope script).Value.Mycommand.Definition).log"
+    $logFile = "$((get-variable myinvocation -scope script).Value.Mycommand.Definition).log"
     log-info "starting: $((get-variable myinvocation -scope script).Value.Mycommand.Definition)"
     get-workingDirectory
         
