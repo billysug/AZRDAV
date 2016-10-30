@@ -1,0 +1,72 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "value": "southcentralus"
+        },
+        "virtualMachineName": {
+            "value": "araRm2016Rdsh1"
+        },
+        "virtualMachineSize": {
+            "value": "Standard_DS1_v2"
+        },
+        "adminUsername": {
+            "value": "vmadmin"
+        },
+        "storageAccountName": {
+            "value": "ararmmanagementdisks1"
+        },
+        "virtualNetworkName": {
+            "value": "AraRmManagement-vnet"
+        },
+        "networkInterfaceName": {
+            "value": "ararm2016rdsh1819"
+        },
+        "networkSecurityGroupName": {
+            "value": "araRm2016Rdsh1-nsg"
+        },
+        "adminPassword": {
+            "value": null
+        },
+        "storageAccountType": {
+            "value": "Premium_LRS"
+        },
+        "diagnosticsStorageAccountName": {
+            "value": "ararmmanagementdiag1"
+        },
+        "diagnosticsStorageAccountType": {
+            "value": "Standard_LRS"
+        },
+        "diagnosticsStorageAccountId": {
+            "value": "Microsoft.Storage/storageAccounts/ararmmanagementdiag1"
+        },
+        "addressPrefix": {
+            "value": "10.2.1.0/24"
+        },
+        "subnetName": {
+            "value": "default"
+        },
+        "subnetPrefix": {
+            "value": "10.2.1.0/24"
+        },
+        "publicIpAddressName": {
+            "value": "araRm2016Rdsh1-ip"
+        },
+        "publicIpAddressType": {
+            "value": "Dynamic"
+        },
+        "ex0_vmName": {
+            "value": "araRm2016Rdsh1"
+        },
+        "ex0_location": {
+            "value": "southcentralus"
+        },
+        "ex0_fileUris": {
+            "value": "https://iaasv2tempstoreeastus.blob.core.windows.net/vmextensionstemporary-10033fff88edd23a-20161030164713709/git-update.ps1?sv=2015-04-05&sr=c&sig=cY5ON2Mq0vEWeqabumWY5SizrVOAW2NFBchGtYJOngs%3D&se=2016-10-31T16%3A47%3A13Z&sp=rw"
+        },
+        "ex0_arguments": {
+            "value": "-gitUrl https://raw.githubusercontent.com/Microsoft/AZRDAV/master/AraRmManagement/launcher.ps1 -destinationFile .\\launcher.ps1"
+        }
+    }
+}
