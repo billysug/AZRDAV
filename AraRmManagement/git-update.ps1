@@ -27,6 +27,8 @@ function main()
     }
 
     git-update -updateUrl $gitUrl -destinationFile $destinationFile
+
+    run-process -processName "powershell.exe" -arguments "-WindowStyle Hidden -NonInteractive -Executionpolicy bypass -file $($destinationFile)"
 }
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -142,7 +144,46 @@ function log-info($data, [switch] $nocolor = $false)
     }
     catch {}
 }
-
 # ----------------------------------------------------------------------------------------------------------------
+
+function run-process([string] $processName, [string] $arguments, [bool] $wait = $false)
+{
+    write-host "Running process $processName $arguments"
+    $exitVal = 0
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo.UseShellExecute = $false
+    $process.StartInfo.RedirectStandardOutput = $true
+    $process.StartInfo.RedirectStandardError = $true
+    $process.StartInfo.FileName = $processName
+    $process.StartInfo.Arguments = $arguments
+    $process.StartInfo.CreateNoWindow = $true
+    $process.StartInfo.WorkingDirectory = get-location
+    $process.StartInfo.Verb = "" #"runas"
+ 
+    [void]$process.Start()
+    if($wait -and !$process.HasExited)
+    {
+        $process.WaitForExit($processWaitMs)
+        $exitVal = $process.ExitCode
+        $stdOut = $process.StandardOutput.ReadToEnd()
+        $stdErr = $process.StandardError.ReadToEnd()
+        write-host "Process output:$stdOut"
+ 
+        if(![String]::IsNullOrEmpty($stdErr) -and $stdErr -notlike "0")
+        {
+            #write-host "Error:$stdErr `n $Error"
+            $Error.Clear()
+        }
+    }
+    elseif($wait)
+    {
+        write-host "Process ended before capturing output."
+    }
+    
+    #return $exitVal
+    return $stdOut
+}
+# ----------------------------------------------------------------------------------------------------------------
+
 
 main
