@@ -1,3 +1,6 @@
+# git-update.ps1
+# used as post azure rm ara template deploy
+
 param
 (
     [Parameter(Mandatory=$true)]
@@ -139,7 +142,7 @@ function log-info($data, [switch] $nocolor = $false)
             }
         }
 
-        Write-Host $data -ForegroundColor $foregroundColor
+        write-host $data -ForegroundColor $foregroundColor
         out-file -Append -InputObject "$([DateTime]::Now.ToString())::$([Diagnostics.Process]::GetCurrentProcess().ID)::$($data)" -FilePath $logFile
     }
     catch {}
@@ -148,7 +151,7 @@ function log-info($data, [switch] $nocolor = $false)
 
 function run-process([string] $processName, [string] $arguments, [bool] $wait = $false)
 {
-    write-host "Running process $processName $arguments"
+    log-info "Running process $processName $arguments"
     $exitVal = 0
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo.UseShellExecute = $false
@@ -167,17 +170,17 @@ function run-process([string] $processName, [string] $arguments, [bool] $wait = 
         $exitVal = $process.ExitCode
         $stdOut = $process.StandardOutput.ReadToEnd()
         $stdErr = $process.StandardError.ReadToEnd()
-        write-host "Process output:$stdOut"
+        log-info "Process output:$stdOut"
  
         if(![String]::IsNullOrEmpty($stdErr) -and $stdErr -notlike "0")
         {
-            #write-host "Error:$stdErr `n $Error"
+            log-info "Error:$stdErr `n $Error"
             $Error.Clear()
         }
     }
     elseif($wait)
     {
-        write-host "Process ended before capturing output."
+        log-info "Process ended before capturing output."
     }
     
     #return $exitVal

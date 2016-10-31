@@ -1,11 +1,5 @@
-param
-(
-    [Parameter(Mandatory=$true)]
-    [string]$gitUrl,
-    
-    [Parameter(Mandatory=$true)]
-    [string]$destinationFile
-)
+# launcher.ps1
+# used as post azure rm deploy startup script called from git-update.ps1
 
 # ----------------------------------------------------------------------------------------------------------------
 function main()
@@ -14,7 +8,7 @@ function main()
     log-info "starting: $((get-variable myinvocation -scope script).Value.Mycommand.Definition)"
     get-workingDirectory
         
-    
+    write-host "finished"
 }
 
 # ----------------------------------------------------------------------------------------------------------------
