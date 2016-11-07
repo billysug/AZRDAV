@@ -131,9 +131,15 @@ function main()
 }
 
 #-------------------------------------------------------------------------------------------------------------------------------
+function get-localTime($utcTime)
+{
+    return [System.TimeZoneInfo]::ConvertTimeFromUtc($utcTime, [System.TimeZoneInfo]::Local)
+}
+
+#-------------------------------------------------------------------------------------------------------------------------------
 function run-commands()
 {
-    $localTime = [System.TimeZoneInfo]::ConvertTimeFromUtc($global:eventStartTime, [System.TimeZoneInfo]::Local)
+    $localTime = get-localTime -utcTime $global:eventStartTime
     if($localTime -ne [DateTime]::MinValue)
     {
         run-command -command "$($global:command) -StartTime `'$($localTime)`'"
@@ -150,28 +156,47 @@ function run-commands()
 }
 
 #-------------------------------------------------------------------------------------------------------------------------------
+function is-deployment($items)
+{
+
+    if($items.Count -gt 0 -and $items[0].EventTimeStamp -ne $null)
+    {
+        return $false
+    }
+    elseif($items.Count -gt 0 -and $items[0].TimeStamp -ne $null)
+    {
+        return $true
+    }
+
+    return $null
+}      
+
+#-------------------------------------------------------------------------------------------------------------------------------
 function run-command($command)
 {
     try
     {
         $items = Invoke-Expression $command
 
-        if($items.Count -gt 0 -and $items[0].EventTimeStamp -ne $null)
+        if($items.Count -lt 1)
+        {
+            return
+        }
+
+        if(is-deployment -items $items)
+        {
+            foreach($item in ($items | Sort-Object Timestamp))
+            {
+                add-depitem -lbitem $item -color "Magenta"
+            }      
+        }
+        else
         {
             foreach($item in ($items | Sort-Object EventTimestamp))
             {
                 add-item -lbitem $item -color "Yellow"
             }      
         }
-        elseif($items.Count -gt 0 -and $items[0].TimeStamp -ne $null)
-        {
-            foreach($item in ($items | Sort-Object Timestamp))
-            {
-                add-depitem -lbitem $item -color "Magenta"
-            }      
-
-        }
-      
     }
     catch
     {
@@ -208,7 +233,7 @@ function add-item($lbitem, $color)
 
     #write-host $lbitem.Properties.Content["statusMessage"]
 
-    $lbi.Content = "EVENT:   $($lbitem.EventTimeStamp)   $($lbitem.ResourceGroupName)   $($lbitem.Status)   $($lbitem.SubStatus)   $($lbitem.CorrelationId)   $($lbitem.EventDataId)   $($lbitem.OperationName)"
+    $lbi.Content = "$((get-localTime -utcTime $lbitem.EventTimeStamp).ToString("o"))   EVENT: $($lbitem.ResourceGroupName)   $($lbitem.Status)   $($lbitem.SubStatus)   $($lbitem.CorrelationId)   $($lbitem.EventDataId)   $($lbitem.OperationName)"
     
     
     if($lbItem.EventDataId -eq $null -or !$global:index.ContainsKey($lbitem.EventTimeStamp.ToString("o")))
@@ -270,7 +295,7 @@ function add-depitem($lbitem, $color)
 
     #write-host $lbitem.Properties.Content["statusMessage"]
 
-    $lbi.Content = "DEPLOYMENT:   $($lbItem.DeploymentName) $($lbitem.TimeStamp)   $($lbitem.ResourceGroupName)   $($lbitem.ProvisioningState)   $($lbitem.Mode)   $($lbitem.CorrelationId) $($lbitem.Output)"
+    $lbi.Content = "$((get-localTime -utcTime $lbitem.TimeStamp).ToString("o"))   DEPLOYMENT: $($lbitem.ResourceGroupName)   $($lbItem.DeploymentName)   $($lbitem.ProvisioningState)   $($lbitem.Mode)   $($lbitem.CorrelationId) $($lbitem.Output)"
     
     
     if(!$global:index.ContainsKey($lbitem.TimeStamp.ToString("o")))
@@ -332,20 +357,21 @@ function open-event()
     
         #Connect to Controls
         $eventListbox = $eventWindow.FindName('listbox')
-
         $item = $global:listbox.SelectedItem.Tag
+        [Windows.Controls.ListBoxItem]$lbi = new-object Windows.Controls.ListBoxItem
 
-        <#
-
-        #foreach($item in $items)
-        #{
-            [Windows.Controls.ListBoxItem]$lbi = new-object Windows.Controls.ListBoxItem
+        if(is-deployment -items $item)
+        {
+            $lbi.Content = ($item | fl * | out-string) 
+        }
+        else
+        {
             $content = new-object Text.StringBuilder
             $content.AppendLine("ID:$($item.Id)")
             $content.AppendLine("LEVEL:$($item.Level)")
             $content.AppendLine("OPERATION ID:$($item.OperationId)")
             $content.AppendLine("OPERATION NAME:$($item.OperationName)")
-        
+    
             $content.AppendLine("PROPERTIES:")
             if($item.Properties.Content.IsInitialized)
             {
@@ -376,36 +402,30 @@ function open-event()
             $content.AppendLine("SUBSCRIPTION ID:$($item.SubscriptionId)")
 
             $lbi.Content = $content.ToString()
-            #>
+        }
 
-            [Windows.Controls.ListBoxItem]$lbi = new-object Windows.Controls.ListBoxItem
-            $lbi.Content = ($item | fl * | out-string)
+        if(($item | format-list | out-string) -imatch "(level.+\:.+Error)|provisioningstate.+\:.+failed")
+        {
+            $lbi.Background = "AliceBlue"
+            $lbi.Foreground = "Red"
 
-
-            if(($item | format-list | out-string) -imatch "(level.+\:.+Error)|provisioningstate.+\:.+failed")
+            if($detail)
             {
-                $lbi.Background = "AliceBlue"
-                $lbi.Foreground = "Red"
-
-                if($detail)
-                {
-                    write-host ($item | fl * | out-string) -BackgroundColor "Red"
-                }
-
-            }
-            else
-            {
-                $lbi.Background = "AliceBlue"
-                $lbi.Foreground = "Green"
-                if($detail)
-                {
-                    write-host ($item | fl * | out-string) -BackgroundColor "Green"
-                }
+                write-host ($item | fl * | out-string) -BackgroundColor "Red"
             }
 
-            $ret = $eventListbox.Items.Add($lbi)
-        #}
+        }
+        else
+        {
+            $lbi.Background = "AliceBlue"
+            $lbi.Foreground = "Green"
+            if($detail)
+            {
+                write-host ($item | fl * | out-string) -BackgroundColor "Green"
+            }
+        }
 
+        $ret = $eventListbox.Items.Add($lbi)
         $eventWindow.ShowDialog()
     }
     catch
