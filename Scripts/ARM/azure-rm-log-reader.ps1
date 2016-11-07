@@ -25,8 +25,8 @@
 #>  
 
 param (
-    [switch]$detail=$true,
-    [string]$resourceGroupName="rdsdepjag2"
+    [switch]$detail=$false,
+    [string]$resourceGroupName
 )
 
 #$ErrorActionPreference = "SilentlyContinue"
