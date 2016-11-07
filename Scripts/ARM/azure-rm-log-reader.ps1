@@ -12,8 +12,8 @@
 .NOTES  
    Originator : jgilber
    File Name  : azur-rm-log-reader.ps1
-   Version    : 161106 original
-   History    : 
+   Version    : 161107 added deployments
+   History    : 161106 original
 
 .EXAMPLE  
     .\azur-rm-log-reader.ps1
@@ -25,14 +25,19 @@
 #>  
 
 param (
-    [switch]$detail=$true
+    [switch]$detail=$true,
+    [string]$resourceGroupName="rdsdepjag2"
 )
+
+#$ErrorActionPreference = "SilentlyContinue"
 
 Add-Type -AssemblyName PresentationFramework            
 Add-Type -AssemblyName PresentationCore  
 
 $global:command = "get-azurermlog -DetailedOutput"
+$global:deploymentcommand = "Get-AzureRmResourceGroupDeployment -ResourceGroupName"
 $global:listbox = $null
+$global:inputTextBox = $null
 $global:index = @{}
 $global:creds
 $global:window = $null
@@ -41,6 +46,8 @@ $error.Clear()
 $refreshTime = "0:1:00.0"
 $global:completed = 0
 $global:eventStartTime = [DateTime]::MinValue
+
+#Get-AzureRmResourceGroupDeployment -ResourceGroupName rdsdepjag2
 
 #-------------------------------------------------------------------------------------------------------------------------------
 function main()
@@ -64,13 +71,13 @@ function main()
         <DockPanel>
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="20" />
+                <RowDefinition Height="25" />
                 <RowDefinition Height="20" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <TextBox x:Name="inputTextBox" Grid.Row="0" />
+            <Label x:Name="labelInputTextBox" Grid.Row="0" Content="Resource Group Name:" Width="150" Margin="0,0,0,0" HorizontalAlignment="Left"/>
+            <TextBox x:Name="inputTextBox" Grid.Row="0" Margin="150,0,0,0" HorizontalAlignment="Stretch"/>
             <Button x:Name="refreshButton" Content="Refresh" Grid.Row="1"/>
-       
             <ListBox x:Name="listbox" Grid.Row="2" Height="Auto">
            </ListBox>
            </Grid>
@@ -80,10 +87,11 @@ function main()
     $global:Window=[Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
     
     #Connect to Controls
-    $global:inputTextBox = $global:Window.FindName('inputTextBox')
     $refreshButton = $global:Window.FindName('refreshButton')
     $global:listbox = $global:Window.FindName('listbox')
-    #$removeButton = $global:Window.FindName('removeButton')
+    $global:inputTextBox = $global:Window.FindName('inputTextBox')
+    $global:inputTextBox.Text = $resourceGroupName
+
     $listbox.Add_SelectionChanged({open-event})
     $listbox.Items.SortDescriptions.Add((new-object ComponentModel.SortDescription(“Content”, [ComponentModel.ListSortDirection]::Descending)));
     
@@ -91,7 +99,8 @@ function main()
 
         $timer.Add_Tick({
             write-host "." -NoNewline
-            run-command -command $global:inputTextBox.Text
+            run-commands
+
             if($global:completed)
             {
                 $timer.Stop()
@@ -104,9 +113,10 @@ function main()
     })
 
     #Events
-    $global:inputTextBox.Text = $global:command
-    $refreshButton.Add_Click({run-command -command $global:inputTextBox.Text})
-    run-command -command $global:inputTextBox.Text
+
+    $refreshButton.Add_Click({ run-commands })
+    
+    run-commands    
 
      try
      {
@@ -121,23 +131,47 @@ function main()
 }
 
 #-------------------------------------------------------------------------------------------------------------------------------
+function run-commands()
+{
+    $localTime = [System.TimeZoneInfo]::ConvertTimeFromUtc($global:eventStartTime, [System.TimeZoneInfo]::Local)
+    if($localTime -ne [DateTime]::MinValue)
+    {
+        run-command -command "$($global:command) -StartTime `'$($localTime)`'"
+    }
+    else
+    {
+        run-command -command $global:command
+    }
+
+    if(![string]::IsNullOrEmpty($global:inputTextBox.Text))
+    {
+        run-command -command "$($global:deploymentcommand) $($global:inputTextBox.Text)"
+    }
+}
+
+#-------------------------------------------------------------------------------------------------------------------------------
 function run-command($command)
 {
     try
     {
-        if($global:eventStartTime -eq [DateTime]::MinValue)
+        $items = Invoke-Expression $command
+
+        if($items.Count -gt 0 -and $items[0].EventTimeStamp -ne $null)
         {
-            $items = Invoke-Expression $command
+            foreach($item in ($items | Sort-Object EventTimestamp))
+            {
+                add-item -lbitem $item -color "Yellow"
+            }      
         }
-        else
+        elseif($items.Count -gt 0 -and $items[0].TimeStamp -ne $null)
         {
-            $items = Invoke-Expression "$($command) -StartTime $($global:eventStartTime)"
+            foreach($item in ($items | Sort-Object Timestamp))
+            {
+                add-depitem -lbitem $item -color "Magenta"
+            }      
+
         }
-        
-        foreach($item in ($items | Sort-Object EventTimestamp))
-        {
-            add-item -lbitem $item -color "Yellow"
-        }
+      
     }
     catch
     {
@@ -149,6 +183,7 @@ function run-command($command)
 #-------------------------------------------------------------------------------------------------------------------------------
 function add-item($lbitem, $color)
 {
+
     [Windows.Controls.ListBoxItem]$lbi = new-object Windows.Controls.ListBoxItem
     $lbi.Background = $color
     $failed = $false
@@ -171,10 +206,12 @@ function add-item($lbitem, $color)
         $lbi.Background = "Gray"
     }
 
-    $lbi.Content = "$($lbitem.EventTimeStamp)   $($lbitem.ResourceGroupName)   $($lbitem.Status)   $($lbitem.SubStatus)   $($lbitem.CorrelationId)   $($lbitem.EventDataId)   $($lbitem.OperationName)"
+    #write-host $lbitem.Properties.Content["statusMessage"]
+
+    $lbi.Content = "EVENT:   $($lbitem.EventTimeStamp)   $($lbitem.ResourceGroupName)   $($lbitem.Status)   $($lbitem.SubStatus)   $($lbitem.CorrelationId)   $($lbitem.EventDataId)   $($lbitem.OperationName)"
     
     
-    if(!$global:index.ContainsKey($lbitem.EventDataId))
+    if($lbItem.EventDataId -eq $null -or !$global:index.ContainsKey($lbitem.EventTimeStamp.ToString("o")))
     {
         if($detail)
         {
@@ -193,14 +230,71 @@ function add-item($lbitem, $color)
             $global:eventStartTime = $lbitem.EventTimeStamp
         }
 
-        $lbi.Tag = $lbitem.EventDataId
+        $lbi.Tag = $lbitem
         #$ret = $global:listbox.Items.Add($lbi)
         $ret = $global:listbox.Items.Insert(0,$lbi)
-        $global:index.Add($lbitem.EventDataId,$($lbitem.CorrelationId))
+
+        $global:index.Add($lbitem.EventTimeStamp.ToString("o"),$($lbitem.CorrelationId))
     }
     else
     {
-        # write-host "$(($item | out-string)) exists"
+        write-host "$(($item | out-string)) exists"
+    }
+}
+
+#-------------------------------------------------------------------------------------------------------------------------------
+function add-depitem($lbitem, $color)
+{
+
+    [Windows.Controls.ListBoxItem]$lbi = new-object Windows.Controls.ListBoxItem
+    $lbi.Background = $color
+    $failed = $false
+
+    if($lbitem.ProvisioningState -imatch "Failed")
+    {
+        $lbi.Background = "Red"
+        $failed = $true
+    }
+    elseif($lbitem.ProvisioningState -imatch "Succeeded")
+    {
+        $lbi.Background = "LightBlue"
+    }
+    elseif($lbitem.ProvisioningState -imatch "Started")
+    {
+        $lbi.Background = "LightGreen"
+    }
+    elseif($lbitem.ProvisioningState -imatch "Completed")
+    {
+        $lbi.Background = "Gray"
+    }
+
+    #write-host $lbitem.Properties.Content["statusMessage"]
+
+    $lbi.Content = "DEPLOYMENT:   $($lbItem.DeploymentName) $($lbitem.TimeStamp)   $($lbitem.ResourceGroupName)   $($lbitem.ProvisioningState)   $($lbitem.Mode)   $($lbitem.CorrelationId) $($lbitem.Output)"
+    
+    
+    if(!$global:index.ContainsKey($lbitem.TimeStamp.ToString("o")))
+    {
+        if($detail)
+        {
+            if($failed)
+            {
+                write-host $lbi.Content -BackgroundColor "Red"
+            }
+            else
+            {
+                write-host $lbi.Content -BackgroundColor "Green"
+            }
+        }
+
+        $lbi.Tag = $lbitem
+        $ret = $global:listbox.Items.Insert(0,$lbi)
+
+        $global:index.Add($lbitem.TimeStamp.ToString("o"),$($lbitem.CorrelationId))
+    }
+    else
+    {
+        write-host "$(($item | out-string)) exists"
     }
 }
 
@@ -223,44 +317,102 @@ function open-event()
     </Window>
 "@
 
-    $eventWindow=[Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
+    #$eventcommand = "$($global:command) -CorrelationID $($global:listbox.SelectedItem.Tag.CorrelationId) | ? EventDataId -eq $($global:listbox.SelectedItem.Tag.EventDataId)"
+    #write-host $eventcommand
+    #$items = Invoke-Expression $eventcommand
     
-    #Connect to Controls
-    $eventListbox = $eventWindow.FindName('listbox')
-    
-    $items = Invoke-Expression "$($global:command) -CorrelationID $($global:index[$global:listbox.SelectedItem.Tag])"
-    
-    foreach($item in $items)
+    #if([string]::IsNullOrEmpty($items) -or $items.Count -lt 1)
+    #{
+    #    write-host "no event information"
+    #    return
+    #}
+    try
     {
-        [Windows.Controls.ListBoxItem]$lbi = new-object Windows.Controls.ListBoxItem
+        $eventWindow=[Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
+    
+        #Connect to Controls
+        $eventListbox = $eventWindow.FindName('listbox')
 
-        $lbi.Content = "$(($item | format-list | Out-String))"
+        $item = $global:listbox.SelectedItem.Tag
 
-        if(($item | format-list | out-string) -imatch "level.+\:.+Error")
-        {
-            $lbi.Background = "AliceBlue"
-            $lbi.Foreground = "Red"
+        <#
 
-            if($detail)
+        #foreach($item in $items)
+        #{
+            [Windows.Controls.ListBoxItem]$lbi = new-object Windows.Controls.ListBoxItem
+            $content = new-object Text.StringBuilder
+            $content.AppendLine("ID:$($item.Id)")
+            $content.AppendLine("LEVEL:$($item.Level)")
+            $content.AppendLine("OPERATION ID:$($item.OperationId)")
+            $content.AppendLine("OPERATION NAME:$($item.OperationName)")
+        
+            $content.AppendLine("PROPERTIES:")
+            if($item.Properties.Content.IsInitialized)
             {
-                write-host $lbi.Content -BackgroundColor "Red"
+                $content.AppendLine("`tSTATUS CODE: $($item.Properties.Content["statusCode"])")
+                $statusMessage = $item.Properties.Content["statusMessage"] | ConvertFrom-Json
+
+                if($statusMessage.getType().Name -eq "String")
+                {
+                    $content.AppendLine("`tSTATUS MESSAGE:$($statusMessage)")   
+                }
+                else
+                {
+                    $content.AppendLine("`tSTATUS MESSAGE STATUS: $($statusMessage.status)")
+                    $content.AppendLine("`tSTATUS MESSAGE ERROR CODE: $($statusMessage.error.code)")
+                    $content.AppendLine("`tSTATUS MESSAGE ERROR MESSAGE: $($statusMessage.error.message)")
+                    $content.AppendLine("`tSTATUS MESSAGE ERROR DETAILS CODE: $($statusMessage.error.details.code)")
+                    $content.AppendLine("`tSTATUS MESSAGE ERROR DETAILS MESSAGE: $($statusMessage.error.details.message)")
+                    #$content.AppendLine("`tSTATUS MESSAGE: $($statusMessage.error.status) $($statusMessage.error.code) $($statusMessage.error.message) $($statusMessage.error.details)")
+                }
             }
 
-        }
-        else
-        {
-            $lbi.Background = "AliceBlue"
-            $lbi.Foreground = "Green"
-            if($detail)
-            {
-                write-host $lbi.Content -BackgroundColor "Green"
-            }
-        }
+            $content.AppendLine("RESOURCE GROUP NAME:$($item.ResourceGroupName)")
+            $content.AppendLine("RESOURCE PROVIDER NAME:$($item.ResourceProviderName)")
+            $content.AppendLine("RESOURCE ID:$($item.ResourceId)")
+            $content.AppendLine("STATUS:$($item.Status)")
+            $content.AppendLine("SUBSTATUS:$($item.SubStatus)")
+            $content.AppendLine("SUBMISSION TIME STAMP:$($item.SubmissionTimestamp)")
+            $content.AppendLine("SUBSCRIPTION ID:$($item.SubscriptionId)")
 
-        $ret = $eventListbox.Items.Add($lbi)
+            $lbi.Content = $content.ToString()
+            #>
+
+            [Windows.Controls.ListBoxItem]$lbi = new-object Windows.Controls.ListBoxItem
+            $lbi.Content = ($item | fl * | out-string)
+
+
+            if(($item | format-list | out-string) -imatch "(level.+\:.+Error)|provisioningstate.+\:.+failed")
+            {
+                $lbi.Background = "AliceBlue"
+                $lbi.Foreground = "Red"
+
+                if($detail)
+                {
+                    write-host ($item | fl * | out-string) -BackgroundColor "Red"
+                }
+
+            }
+            else
+            {
+                $lbi.Background = "AliceBlue"
+                $lbi.Foreground = "Green"
+                if($detail)
+                {
+                    write-host ($item | fl * | out-string) -BackgroundColor "Green"
+                }
+            }
+
+            $ret = $eventListbox.Items.Add($lbi)
+        #}
+
+        $eventWindow.ShowDialog()
     }
-
-    $eventWindow.ShowDialog()
+    catch
+    {
+        write-host "open-event:exception $($error)"
+        $error.Clear()
+    }
 }
 
 #-------------------------------------------------------------------------------------------------------------------------------
